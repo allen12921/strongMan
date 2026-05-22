@@ -3,7 +3,7 @@ from django.contrib.auth.models import User
 from django.urls import reverse
 from django.test import TestCase, RequestFactory, Client
 
-from strongMan.apps.certificates.models.certificates import PrivateKey, Certificate
+from strongMan.apps.certificates.models.certificates import PrivateKey, Certificate, UserCertificate
 from strongMan.apps.certificates.views import AddHandler
 
 from .certificates import TestCertificates
@@ -261,47 +261,44 @@ class DetailsViewTest(TestCase):
         self.assertEqual(self.count(Certificate), 1)
 
     def test_add_same_publickey_different_serialnumber(self):
+        # Adding a cert with the same public key replaces the existing one
         self.add_keycontainer(TestCertificates.X509_rsa_ca)
         self.add_keycontainer(TestCertificates.X509_rsa_ca_samepk_differentsn)
-        self.assertEqual(self.count(Certificate), 2)
+        self.assertEqual(self.count(Certificate), 1)
         response = self.client.post(reverse('certificates:overview'), {})
-        self.assertContains(response, 'CN=hsr.ch', 2)
+        self.assertContains(response, 'CN=hsr.ch', 1)
         self.assertContains(response, 'OU=Informatik', 1)
-        self.assertContains(response, 'OU=IT', 1)
 
     def test_detail_same_publickey_different_serialnumber(self):
+        # Adding a cert with the same public key replaces the existing one (id=1 deleted)
         self.add_keycontainer(TestCertificates.X509_rsa_ca)
         self.add_keycontainer(TestCertificates.X509_rsa_ca_samepk_differentsn)
         self.add_keycontainer(TestCertificates.PKCS1_rsa_ca)
-        self.assertEqual(self.count(Certificate), 2)
+        self.assertEqual(self.count(Certificate), 1)
         self.assertEqual(self.count(PrivateKey), 1)
 
-        response = self.client.post(reverse('certificates:details', kwargs={'certificate_id': "1"}), {})
-        self.assertContains(response, 'hsr.ch')
-        self.assertContains(response, 'IT')
-        self.assertContains(response, '<td>Private</td>')
-
-        response = self.client.post(reverse('certificates:details', kwargs={'certificate_id': "2"}), {})
+        cert = UserCertificate.objects.first()
+        response = self.client.post(reverse('certificates:details', kwargs={'certificate_id': str(cert.id)}), {})
         self.assertContains(response, 'hsr.ch')
         self.assertContains(response, 'Informatik')
         self.assertContains(response, '<td>Private</td>')
 
     def test_delete_privatekey_same_publickey_different_serialnumber(self):
+        # Adding a cert with the same public key replaces the existing one (id=1 deleted)
         self.add_keycontainer(TestCertificates.X509_rsa_ca)
         self.add_keycontainer(TestCertificates.X509_rsa_ca_samepk_differentsn)
         self.add_keycontainer(TestCertificates.PKCS1_rsa_ca)
-        self.assertEqual(self.count(Certificate), 2)
+        self.assertEqual(self.count(Certificate), 1)
         self.assertEqual(self.count(PrivateKey), 1)
 
-        response = self.client.post(reverse('certificates:details', kwargs={'certificate_id': "1"}),
-                                    {"remove_privatekey": "remove_privatekey"})
-        self.assertEqual(self.count(PrivateKey), 1)
+        cert = UserCertificate.objects.first()
+        response = self.client.post(
+            reverse('certificates:details', kwargs={'certificate_id': str(cert.id)}),
+            {"remove_privatekey": "remove_privatekey"})
+        self.assertEqual(self.count(PrivateKey), 0)
 
-        response = self.client.post(reverse('certificates:details', kwargs={'certificate_id': "1"}), {})
+        response = self.client.post(reverse('certificates:details', kwargs={'certificate_id': str(cert.id)}), {})
         self.assertNotContains(response, '<td>Private</td>')
-
-        response = self.client.post(reverse('certificates:details', kwargs={'certificate_id': "2"}), {})
-        self.assertContains(response, '<td>Private</td>')
 
     def test_delete_cert_same_publickey_different_serialnumber(self):
         self.add_keycontainer(TestCertificates.X509_rsa_ca)

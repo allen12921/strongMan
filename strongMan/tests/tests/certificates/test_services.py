@@ -37,9 +37,10 @@ class TestUserCertificateManager(TestCase):
         self.assertEqual(count(strongMan.apps.certificates.models.certificates.UserCertificate), 1)
 
     def test_add_x509_twice_different_serialnumber(self):
+        # Adding a cert with the same public key replaces the existing one
         self.manager.add_keycontainer(TestCertificates.X509_rsa_ca.read())
         self.manager.add_keycontainer(TestCertificates.X509_rsa_ca_samepk_differentsn.read())
-        self.assertEqual(count(strongMan.apps.certificates.models.certificates.UserCertificate), 2)
+        self.assertEqual(count(strongMan.apps.certificates.models.certificates.UserCertificate), 1)
 
     def test_add_pkcs1_withx509_twice_different_serialnumber(self):
         self.manager.add_keycontainer(TestCertificates.X509_rsa_ca.read())

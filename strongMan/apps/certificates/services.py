@@ -56,6 +56,17 @@ class UserCertificateManager(object):
         if cls._certificate_by_hashserial(reader.public_key_hash(), reader.serial_number()) is not None:
             e = CertificateManagerException("Certificate " + reader.cname() + " already exists.")
             return AddKeyContainerResult(False, exceptions=[e])
+        
+        # Remove old certificates with same public key but different serial number.
+        # Detach the private key first so the pre_delete signal doesn't delete it
+        # before the new cert is saved and can reclaim it.
+        old_certs = UserCertificate.objects.filter(public_key_hash=reader.public_key_hash()).exclude(serial_number=reader.serial_number())
+        for old_cert in old_certs:
+            if old_cert.private_key is not None:
+                old_cert.private_key = None
+                old_cert.save()
+            old_cert.delete()
+        
         cert = CertificateFactory.user_certificate_by_x509reader(reader)
         cert.set_privatekey_if_exists()
         cert.save()

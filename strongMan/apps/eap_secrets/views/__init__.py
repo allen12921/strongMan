@@ -6,6 +6,7 @@ from django.shortcuts import get_object_or_404
 from .OverviewHandler import OverviewHandler
 from .AddHandler import AddHandler
 from .EditHandler import EditHandler
+from .SyncOverviewHandler import SyncOverviewHandler
 from ..models import Secret
 
 
@@ -28,4 +29,11 @@ def add(request):
 def edit(request, secret_name):
     secret = get_object_or_404(Secret, username=secret_name)
     handler = EditHandler(request, secret)
+    return handler.handle()
+
+
+@login_required
+@require_http_methods(["GET"])
+def sync_overview(request):
+    handler = SyncOverviewHandler(request)
     return handler.handle()

@@ -6,7 +6,9 @@ from django.db import IntegrityError
 
 from ..forms import AddOrEditForm
 from ..models import Secret
+from .. import peer_sync
 from strongMan.helper_apps.vici.wrapper.wrapper import ViciWrapper
+from strongMan.helper_apps.vici.wrapper.exception import ViciException
 
 
 class AddHandler(object):
@@ -37,6 +39,13 @@ class AddHandler(object):
                     messages.add_message(self.request, messages.ERROR,
                                          'An EAP Secret with this Username does already exist')
                     return render(self.request, 'eap_secrets/add.html', {"form": self.form})
-                ViciWrapper().load_secret(secret.dict())
+                try:
+                    ViciWrapper().load_secret(secret.dict())
+                except ViciException as e:
+                    secret.delete()
+                    messages.add_message(self.request, messages.ERROR, str(e))
+                    return render(self.request, 'eap_secrets/add.html', {"form": self.form})
+                # Local DB + vici consistent — now notify peers
+                peer_sync.push_create(self.form.my_username, self.form.my_password)
                 messages.add_message(self.request, messages.SUCCESS, 'Successfully created EAP Secret')
                 return redirect(reverse("eap_secrets:overview"))

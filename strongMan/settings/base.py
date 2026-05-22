@@ -122,3 +122,9 @@ def create_read_key(file_path):
 
 SECRET_KEY = create_read_key('secret_key.txt')
 DB_SECRET_KEY = create_read_key('db_key.txt')
+
+# Multi-instance EAP sync peers
+# EAP_SYNC_PEERS = [
+#     {'url': 'http://peer1:8080', 'username': 'admin', 'password': 'secret'},
+# ]
+EAP_SYNC_PEERS = []

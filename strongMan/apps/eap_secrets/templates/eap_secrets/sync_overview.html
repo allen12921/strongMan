@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}EAP Secrets{% endblock title %}
+{% block small-title %}Sync Peers{% endblock small-title %}
+{% block html-head %}
+    <link href="{% static 'eap_secrets/eap_secrets.css' %}" rel="stylesheet">
+{% endblock %}
+{% block content %}
+<div class="row col-xs-12 col-md-10 col-md-offset-1">
+
+    <!-- Peer status table -->
+    <div class="panel panel-default">
+        <div class="panel-heading">
+            <div class="row">
+                <div class="col-xs-9"><strong>Configured Peers</strong></div>
+                <div class="col-xs-3 text-right">
+                    <button id="full-sync-btn" class="btn btn-primary btn-sm">
+                        <span class="glyphicon glyphicon-upload"></span> Full Sync
+                    </button>
+                    {% if total_pending > 0 %}
+                    <button id="retry-btn" class="btn btn-warning btn-sm">
+                        <span class="glyphicon glyphicon-refresh"></span> Retry All ({{ total_pending }})
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% if peers %}
+        <table class="table table-striped table-bordered" style="margin-bottom:0;">
+            <thead>
+                <tr>
+                    <th>Peer URL</th>
+                    <th>Login User</th>
+                    <th>Status</th>
+                    <th>Pending Failures</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for peer in peers %}
+                <tr>
+                    <td>{{ peer.url }}</td>
+                    <td>{{ peer.username }}</td>
+                    <td>
+                        {% if peer.pending == 0 %}
+                        <span class="label label-success"><span class="glyphicon glyphicon-ok"></span> OK</span>
+                        {% else %}
+                        <span class="label label-warning"><span class="glyphicon glyphicon-warning-sign"></span> Degraded</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if peer.pending > 0 %}
+                        <span class="badge">{{ peer.pending }}</span>
+                        {% else %}
+                        —
+                        {% endif %}
+                    </td>
+                    <td class="text-center">
+                        <button class="btn btn-danger btn-xs delete-peer-btn"
+                                data-peer-id="{{ peer.id }}"
+                                data-peer-url="{{ peer.url }}">
+                            <span class="glyphicon glyphicon-trash"></span>
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="panel-body text-muted">No peers configured yet.</div>
+        {% endif %}
+    </div>
+
+    <!-- Add Peer form -->
+    <div class="panel panel-default">
+        <div class="panel-heading"><strong>Add Peer</strong></div>
+        <div class="panel-body">
+            <form id="add-peer-form" class="form-inline">
+                <div class="form-group" style="margin-right:8px;">
+                    <input type="url" id="peer-url" class="form-control input-sm" placeholder="http://peer:8080" style="width:260px;" required>
+                </div>
+                <div class="form-group" style="margin-right:8px;">
+                    <input type="text" id="peer-username" class="form-control input-sm" placeholder="Username" style="width:140px;" required>
+                </div>
+                <div class="form-group" style="margin-right:8px;">
+                    <input type="password" id="peer-password" class="form-control input-sm" placeholder="Password" style="width:140px;" required>
+                </div>
+                <button type="submit" class="btn btn-success btn-sm">
+                    <span class="glyphicon glyphicon-plus"></span> Add
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Failure records -->
+    {% if failures %}
+    <div class="panel panel-default">
+        <div class="panel-heading"><strong>Pending Sync Failures</strong></div>
+        <table class="table table-condensed table-bordered">
+            <thead>
+                <tr>
+                    <th>Peer URL</th>
+                    <th>Action</th>
+                    <th>Username</th>
+                    <th>Time</th>
+                    <th>Last Error</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for f in failures %}
+                <tr>
+                    <td>{{ f.peer_url }}</td>
+                    <td>
+                        {% if f.action == 'create' %}
+                        <span class="label label-primary">create</span>
+                        {% elif f.action == 'update' %}
+                        <span class="label label-warning">update</span>
+                        {% else %}
+                        <span class="label label-danger">delete</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ f.username }}</td>
+                    <td><small>{{ f.created_at|date:"Y-m-d H:i:s" }}</small></td>
+                    <td><small class="text-danger">{{ f.last_error }}</small></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-muted">No pending failures.</p>
+    {% endif %}
+
+</div>
+
+<div id="sync-result" class="row col-xs-12 col-md-10 col-md-offset-1" style="display:none;">
+    <div id="sync-alert" class="alert fade in">
+        <span id="sync-msg"></span>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var csrfToken = '{{ csrf_token }}';
+    var resultDiv = document.getElementById('sync-result');
+    var alertEl = document.getElementById('sync-alert');
+    var msgEl = document.getElementById('sync-msg');
+
+    function showMsg(text, isError) {
+        alertEl.className = 'alert fade in ' + (isError ? 'alert-danger' : 'alert-info');
+        msgEl.textContent = text;
+        resultDiv.style.display = '';
+    }
+
+    // Retry All
+    var retryBtn = document.getElementById('retry-btn');
+    if (retryBtn) {
+        retryBtn.addEventListener('click', function () {
+            retryBtn.disabled = true;
+            retryBtn.innerHTML = '<span class="glyphicon glyphicon-refresh"></span> Retrying...';
+            fetch('{% url "eap_secrets:api_sync_retry" %}', {
+                method: 'POST',
+                headers: {'X-CSRFToken': csrfToken, 'Content-Type': 'application/json'},
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    var r = data.result;
+                    showMsg('Retry complete: ' + r.succeeded + ' succeeded, ' + r.failed + ' failed (total: ' + r.total + ')', false);
+                    setTimeout(function() { location.reload(); }, 1500);
+                } else {
+                    showMsg('Error: ' + data.error, true);
+                    retryBtn.disabled = false;
+                    retryBtn.innerHTML = '<span class="glyphicon glyphicon-refresh"></span> Retry All';
+                }
+            })
+            .catch(function(err) {
+                showMsg('Network error: ' + err, true);
+                retryBtn.disabled = false;
+                retryBtn.innerHTML = '<span class="glyphicon glyphicon-refresh"></span> Retry All';
+            });
+        });
+    }
+
+    // Full Sync
+    var fullSyncBtn = document.getElementById('full-sync-btn');
+    if (fullSyncBtn) {
+        fullSyncBtn.addEventListener('click', function () {
+            if (!confirm('Push all local EAP users to every peer via upsert. Continue?')) return;
+            fullSyncBtn.disabled = true;
+            fullSyncBtn.innerHTML = '<span class="glyphicon glyphicon-upload"></span> Syncing...';
+            fetch('{% url "eap_secrets:api_sync_full" %}', {
+                method: 'POST',
+                headers: {'X-CSRFToken': csrfToken, 'Content-Type': 'application/json'},
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    var r = data.result;
+                    if (r.dispatched) {
+                        showMsg('Full sync dispatched: ' + r.total + ' user(s) → ' + r.peers + ' peer(s). Running in background.', false);
+                    } else {
+                        showMsg(r.peers === 0 ? 'No peers configured.' : 'No local EAP users to sync.', false);
+                    }
+                } else {
+                    showMsg('Error: ' + data.error, true);
+                }
+                fullSyncBtn.disabled = false;
+                fullSyncBtn.innerHTML = '<span class="glyphicon glyphicon-upload"></span> Full Sync';
+            })
+            .catch(function(err) {
+                showMsg('Network error: ' + err, true);
+                fullSyncBtn.disabled = false;
+                fullSyncBtn.innerHTML = '<span class="glyphicon glyphicon-upload"></span> Full Sync';
+            });
+        });
+    }
+
+    // Add Peer
+    var addForm = document.getElementById('add-peer-form');
+    if (addForm) {
+        addForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var url = document.getElementById('peer-url').value.trim();
+            var username = document.getElementById('peer-username').value.trim();
+            var password = document.getElementById('peer-password').value;
+            var submitBtn = addForm.querySelector('button[type=submit]');
+            submitBtn.disabled = true;
+            fetch('{% url "eap_secrets:api_peers_add" %}', {
+                method: 'POST',
+                headers: {'X-CSRFToken': csrfToken, 'Content-Type': 'application/json'},
+                body: JSON.stringify({url: url, username: username, password: password}),
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    showMsg('Error: ' + data.error, true);
+                    submitBtn.disabled = false;
+                }
+            })
+            .catch(function(err) {
+                showMsg('Network error: ' + err, true);
+                submitBtn.disabled = false;
+            });
+        });
+    }
+
+    // Delete Peer
+    document.querySelectorAll('.delete-peer-btn').forEach(function(btn) {
+        btn.addEventListener('click', function () {
+            var peerId = btn.getAttribute('data-peer-id');
+            var peerUrl = btn.getAttribute('data-peer-url');
+            if (!confirm('Remove peer ' + peerUrl + '?')) return;
+            btn.disabled = true;
+            fetch('{% url "eap_secrets:api_peers_delete" peer_id=0 %}'.replace('/0/', '/' + peerId + '/'), {
+                method: 'DELETE',
+                headers: {'X-CSRFToken': csrfToken},
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    showMsg('Error: ' + data.error, true);
+                    btn.disabled = false;
+                }
+            })
+            .catch(function(err) {
+                showMsg('Network error: ' + err, true);
+                btn.disabled = false;
+            });
+        });
+    });
+});
+</script>
+{% endblock content %}

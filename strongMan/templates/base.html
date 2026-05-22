@@ -53,7 +53,15 @@
                         <li class="client-mode" ><a href="{% url "connections:index" %}">Connections</a></li>
                         <li class="server-mode" ><a href="{% url "server_connections:index" %}">Server Connections</a></li>
                         <li><a href="{% url "certificates:overview" %}">Certificates</a></li>
-                        <li class="server-mode" ><a href="{% url "eap_secrets:overview" %}">EAP Secrets</a></li>
+                        <li class="dropdown server-mode">
+                            <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">
+                                EAP Secrets <span class="caret"></span>
+                            </a>
+                            <ul class="dropdown-menu">
+                                <li><a href="{% url 'eap_secrets:overview' %}">Secrets</a></li>
+                                <li><a href="{% url 'eap_secrets:sync_overview' %}">Sync Peers</a></li>
+                            </ul>
+                        </li>
                         <li class="server-mode" ><a href="{% url "pools:index" %}">Pools</a></li>
                         <li><a href="{% url "about" %}">About</a></li>
                     </ul>

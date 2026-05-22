@@ -154,39 +154,40 @@ class UserCertificateTest(TestCase):
         self.assertEqual(count(Certificate), 1)
 
     def test_privkey_two_certs_delete_cert(self):
+        # Adding a cert with the same public key replaces the existing one
         add_to_db(TestCertificates.X509_rsa_ca)
         add_to_db(TestCertificates.X509_rsa_ca_samepk_differentsn)
         add_to_db(TestCertificates.PKCS1_rsa_ca)
-        self.assertEqual(count(Certificate), 2)
-        self.assertEqual(count(PrivateKey), 1)
-        cert = UserCertificate.objects.get(id=1)
-        cert.delete()
         self.assertEqual(count(Certificate), 1)
         self.assertEqual(count(PrivateKey), 1)
-        other_ert = UserCertificate.objects.get(id=2)
-        self.assertIsNotNone(other_ert.private_key)
+        cert = UserCertificate.objects.first()
+        self.assertIsNotNone(cert.private_key)
+        cert.delete()
+        self.assertEqual(count(Certificate), 0)
+        self.assertEqual(count(PrivateKey), 0)
 
     def test_privkey_two_certs_delete_both(self):
+        # Adding a cert with the same public key replaces the existing one
         add_to_db(TestCertificates.X509_rsa_ca)
         add_to_db(TestCertificates.X509_rsa_ca_samepk_differentsn)
         add_to_db(TestCertificates.PKCS1_rsa_ca)
-        self.assertEqual(count(Certificate), 2)
+        self.assertEqual(count(Certificate), 1)
         self.assertEqual(count(PrivateKey), 1)
         UserCertificate.objects.all().delete()
         self.assertEqual(count(Certificate), 0)
         self.assertEqual(count(PrivateKey), 0)
 
     def test_privkey_two_certs_delete_key_once(self):
+        # Adding a cert with the same public key replaces the existing one
         add_to_db(TestCertificates.X509_rsa_ca)
         add_to_db(TestCertificates.X509_rsa_ca_samepk_differentsn)
         add_to_db(TestCertificates.PKCS1_rsa_ca)
-        self.assertEqual(count(Certificate), 2)
+        self.assertEqual(count(Certificate), 1)
         self.assertEqual(count(PrivateKey), 1)
-        cert = UserCertificate.objects.get(id=1)
+        cert = UserCertificate.objects.first()
+        self.assertIsNotNone(cert.private_key)
         cert.remove_privatekey()
         self.assertIsNone(cert.private_key)
-        cert2 = UserCertificate.objects.get(id=2)
-        self.assertIsNotNone(cert2.private_key)
 
     def test_certificate_identities(self):
         add_to_db(TestCertificates.X509_googlecom)

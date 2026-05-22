@@ -14,7 +14,7 @@ django.setup()
 
 from collections import OrderedDict
 from strongMan.apps.server_connections.models import Connection
-from strongMan.apps.certificates.models.certificates import PrivateKey, Certificate
+from strongMan.apps.certificates.models.certificates import PrivateKey, Certificate, UserCertificate
 from strongMan.apps.eap_secrets.models import Secret
 from strongMan.apps.pools.models.pools import Pool
 from strongMan.helper_apps.vici.wrapper.wrapper import ViciWrapper
@@ -55,8 +55,29 @@ def load_credentials(vici=ViciWrapper()):
     load_certificates(vici)
 
 
+def cleanup_expired_certificates():
+    from django.utils import timezone
+    # Query as UserCertificate so pre_delete signals (PrivateKey cleanup) fire correctly
+    expired = list(UserCertificate.objects.filter(valid_not_after__lt=timezone.now()))
+    count = len(expired)
+    if count > 0:
+        for cert in expired:
+            cert.delete()
+        print(f"Cleaned up {count} expired certificate(s)")
+        return True
+    return False
+
+
 def main():
     vici = ViciWrapper()
+    cleaned = cleanup_expired_certificates()
+    if cleaned:
+        vici.clear_creds()
+    from strongMan.apps.eap_secrets.peer_sync import retry_failed_syncs
+    try:
+        retry_failed_syncs()
+    except Exception as e:
+        print(f"Warning: retry_failed_syncs failed at startup: {e}")
     load_credentials(vici)
     load_pools(vici)
     load_connections()
