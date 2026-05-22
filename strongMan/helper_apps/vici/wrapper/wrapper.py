@@ -63,6 +63,15 @@ class ViciWrapper(object):
         except Exception as e:
             raise ViciLoadException("Secret cannot be loaded! " + str(e))
 
+    def unload_secret(self, username):
+        '''
+        :type username: str
+        '''
+        try:
+            self.session.unload_shared({'id': 'managed:' + username})
+        except Exception as e:
+            raise ViciLoadException("Secret cannot be unloaded! " + str(e))
+
     def load_key(self, key):
         '''
         :type secret: dict

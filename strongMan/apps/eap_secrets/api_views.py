@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from base64 import b64encode
 from os import urandom
@@ -11,6 +12,9 @@ from django.views.decorators.http import require_http_methods
 from .models import Secret
 from . import peer_sync
 from strongMan.helper_apps.vici.wrapper.wrapper import ViciWrapper
+from strongMan.helper_apps.vici.wrapper.exception import ViciSocketException, ViciLoadException
+
+logger = logging.getLogger(__name__)
 
 
 @csrf_exempt
@@ -98,6 +102,10 @@ def delete_eap_user(request, username):
                 'error': f'EAP user "{username}" not found'
             }, status=404)
 
+        try:
+            ViciWrapper().unload_secret(username)
+        except (ViciSocketException, ViciLoadException) as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=500)
         secret.delete()
         peer_sync.push_delete(username)
 

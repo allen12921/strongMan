@@ -69,6 +69,7 @@ def cleanup_expired_certificates():
 
 
 def main():
+    import subprocess
     vici = ViciWrapper()
     cleaned = cleanup_expired_certificates()
     if cleaned:
@@ -79,6 +80,16 @@ def main():
     except Exception as e:
         print(f"Warning: retry_failed_syncs failed at startup: {e}")
     load_credentials(vici)
+    if cleaned:
+        # Restore filesystem-based credentials (e.g. private key from /etc/swanctl/conf.d/)
+        # that were evicted by clear_creds(). The vici protocol has no "reload from filesystem"
+        # command; only swanctl can do this by reading /etc/swanctl/* and calling load-key/load-cert.
+        try:
+            result = subprocess.run(['swanctl', '--load-creds'], capture_output=True, check=False)
+            if result.returncode != 0:
+                print(f"Warning: swanctl --load-creds failed: {result.stderr.decode()}")
+        except FileNotFoundError:
+            print("Warning: swanctl not found; file-based private key may need a daemon restart to reload")
     load_pools(vici)
     load_connections()
 

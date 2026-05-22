@@ -1,6 +1,3 @@
-import logging
-from collections import OrderedDict
-
 from django.contrib import messages
 from django.shortcuts import redirect
 from django.urls import reverse
@@ -12,8 +9,6 @@ from ..models import Secret
 from .. import peer_sync
 from strongMan.helper_apps.vici.wrapper.wrapper import ViciWrapper
 from strongMan.helper_apps.vici.wrapper.exception import ViciException
-
-logger = logging.getLogger(__name__)
 
 
 class EditHandler(object):
@@ -29,8 +24,7 @@ class EditHandler(object):
         try:
             username = self.secret.username
             self.secret.delete()
-            self.reload_secrets()
-            # Local DB + vici consistent — now notify peers
+            ViciWrapper().unload_secret(username)
             peer_sync.push_delete(username)
             messages.add_message(self.request, messages.SUCCESS, 'Successfully deleted EAP Secret')
         except ProtectedError:
@@ -58,34 +52,21 @@ class EditHandler(object):
             self.secret.password = form.my_salted_password
             self.secret.salt = form.my_salt
             self.secret.save()
-            self.reload_secrets()
-            # Local DB + vici consistent — now notify peers (sequential delete+upsert per peer)
+            ViciWrapper().unload_secret(username)
+            ViciWrapper().load_secret(self.secret.dict())
             peer_sync.push_update(username, new_password)
             messages.add_message(self.request, messages.SUCCESS, 'Successfully updated EAP Secret')
         except ViciException as e:
             self.secret.password = old_password
             self.secret.salt = old_salt
             self.secret.save()
+            try:
+                ViciWrapper().load_secret(self.secret.dict())
+            except Exception:
+                pass
             messages.add_message(self.request, messages.ERROR, str(e))
             return render(self.request, 'eap_secrets/edit.html', {"form": form})
         return redirect(reverse("eap_secrets:overview"))
-
-    def reload_secrets(self):
-        from strongMan.apps.certificates.models.certificates import PrivateKey, Certificate
-        vici = ViciWrapper()
-        vici.clear_creds()
-        for secret in Secret.objects.all():
-            vici.load_secret(secret.dict())
-        for key in PrivateKey.objects.all():
-            try:
-                vici.load_key(OrderedDict(type=key.get_algorithm_type(), data=key.der_container))
-            except Exception as e:
-                logger.warning('reload_secrets: failed to load key: %s', e)
-        for cert in Certificate.objects.all():
-            try:
-                vici.load_certificate(OrderedDict(type=cert.type, flag='None', data=cert.der_container))
-            except Exception as e:
-                logger.warning('reload_secrets: failed to load certificate: %s', e)
 
     def handle(self):
         if self.request.method == "GET":

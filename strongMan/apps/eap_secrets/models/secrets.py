@@ -13,8 +13,7 @@ class Secret(models.Model):
 
     def dict(self):
         password = self.password[32:]
-        secrets = OrderedDict(type=self.type, data=password, owners=[self.username])
-        return secrets
+        return OrderedDict(id='managed:' + self.username, type=self.type, data=password, owners=[self.username])
 
     def __str__(self):
         return str(self.username)
