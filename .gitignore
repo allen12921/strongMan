@@ -97,6 +97,8 @@ target/
 #SASS
 *.map
 
+env_local/
+
 #strongMan secret keys
 secret_key.txt
 db_key.txt

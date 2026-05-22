@@ -1,3 +1,6 @@
+import logging
+from collections import OrderedDict
+
 from django.contrib import messages
 from django.shortcuts import redirect
 from django.urls import reverse
@@ -9,6 +12,8 @@ from ..models import Secret
 from .. import peer_sync
 from strongMan.helper_apps.vici.wrapper.wrapper import ViciWrapper
 from strongMan.helper_apps.vici.wrapper.exception import ViciException
+
+logger = logging.getLogger(__name__)
 
 
 class EditHandler(object):
@@ -66,10 +71,21 @@ class EditHandler(object):
         return redirect(reverse("eap_secrets:overview"))
 
     def reload_secrets(self):
+        from strongMan.apps.certificates.models.certificates import PrivateKey, Certificate
         vici = ViciWrapper()
         vici.clear_creds()
         for secret in Secret.objects.all():
             vici.load_secret(secret.dict())
+        for key in PrivateKey.objects.all():
+            try:
+                vici.load_key(OrderedDict(type=key.get_algorithm_type(), data=key.der_container))
+            except Exception as e:
+                logger.warning('reload_secrets: failed to load key: %s', e)
+        for cert in Certificate.objects.all():
+            try:
+                vici.load_certificate(OrderedDict(type=cert.type, flag='None', data=cert.der_container))
+            except Exception as e:
+                logger.warning('reload_secrets: failed to load certificate: %s', e)
 
     def handle(self):
         if self.request.method == "GET":
