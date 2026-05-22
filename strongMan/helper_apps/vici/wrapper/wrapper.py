@@ -29,6 +29,7 @@ class ViciWrapper(object):
     def _connect_socket(self):
         try:
             self.socket = socket.socket(socket.AF_UNIX)
+            self.socket.settimeout(30)
             self.socket.connect(self.socket_path)
             self.session = vici.Session(self.socket)
         except Exception as e:
