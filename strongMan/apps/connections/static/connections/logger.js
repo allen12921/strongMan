@@ -10,7 +10,7 @@ function logger(csrf, logId) {
             }
         },
         success: function (response) {
-            last_log = -1;
+            last_log = logId;
             for (var log in response.logs) {
                 addRowToLog(response.logs[log]);
                 last_log = response.logs[log].id;

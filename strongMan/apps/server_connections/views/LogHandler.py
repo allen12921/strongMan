@@ -29,14 +29,22 @@ class LogHandler(object):
         time_threshold = timezone.now() - timedelta(minutes=5)
         LogMessage.objects.filter(timestamp__lt=time_threshold).delete()
 
+    # Long-poll bound: return an empty response after this many seconds so a
+    # waiting request can't hold a gthread worker thread forever.
+    MAX_POLL_SECONDS = 25
+
     def _get_logs(self):
-        while LogMessage.objects.all().count() == 0:
+        for _ in range(self.MAX_POLL_SECONDS):
+            if LogMessage.objects.all().count() > 0:
+                break
             time.sleep(1)
         return LogMessage.objects.all().order_by('timestamp')
 
     def _get_new_logs(self):
         logs = LogMessage.objects.filter(pk__gt=self.id).order_by('timestamp')
-        while logs.count() == 0:
+        for _ in range(self.MAX_POLL_SECONDS):
+            if logs.count() > 0:
+                break
             time.sleep(1)
             logs = LogMessage.objects.filter(pk__gt=self.id).order_by('timestamp')
         return logs
