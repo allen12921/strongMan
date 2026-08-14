@@ -14,7 +14,7 @@ django.setup()
 
 from collections import OrderedDict
 from strongMan.apps.server_connections.models import Connection
-from strongMan.apps.certificates.models.certificates import PrivateKey, Certificate, UserCertificate
+from strongMan.apps.certificates.models.certificates import PrivateKey, Certificate, UserCertificate, ViciCertificate
 from strongMan.apps.eap_secrets.models import Secret
 from strongMan.apps.pools.models.pools import Pool
 from strongMan.helper_apps.vici.wrapper.wrapper import ViciWrapper
@@ -57,12 +57,27 @@ def load_credentials(vici=ViciWrapper()):
 
 def cleanup_expired_certificates():
     from django.utils import timezone
-    # Query as UserCertificate so pre_delete signals (PrivateKey cleanup) fire correctly
-    expired = list(UserCertificate.objects.filter(valid_not_after__lt=timezone.now()))
-    count = len(expired)
+    # Certificate is the base model; UserCertificate/ViciCertificate are subclasses
+    # (Django multi-table inheritance). Querying only UserCertificate misses expired
+    # ViciCertificate rows (certs mirrored in from vici), which then keep getting
+    # pushed back into charon by load_certificates() on every restart.
+    expired_ids = list(
+        Certificate.objects.filter(valid_not_after__lt=timezone.now()).values_list("id", flat=True)
+    )
+    count = 0
+    for cert_id in expired_ids:
+        # Delete through the most specific subclass so type-specific pre_delete
+        # cleanup (e.g. UserCertificate's private key handling) still runs.
+        cert = (
+            UserCertificate.objects.filter(pk=cert_id).first()
+            or ViciCertificate.objects.filter(pk=cert_id).first()
+            or Certificate.objects.filter(pk=cert_id).first()
+        )
+        if cert is None:
+            continue
+        cert.delete()
+        count += 1
     if count > 0:
-        for cert in expired:
-            cert.delete()
         print(f"Cleaned up {count} expired certificate(s)")
         return True
     return False
