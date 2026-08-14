@@ -18,6 +18,7 @@ from strongMan.apps.server_connections.models import Connection
 from strongMan.apps.certificates.models.certificates import PrivateKey, Certificate, UserCertificate, ViciCertificate
 from strongMan.apps.eap_secrets.models import Secret
 from strongMan.apps.pools.models.pools import Pool
+from strongMan.apps.certificates.services import ViciCertificateManager
 from strongMan.helper_apps.vici.wrapper.wrapper import ViciWrapper
 
 # Default swanctl credential directories holding X.509 certs (see swanctl.conf(5)):
@@ -160,6 +161,19 @@ def main():
             print("Warning: swanctl not found; file-based private key may need a daemon restart to reload")
     load_pools(vici)
     load_connections()
+
+    # Mirror whatever charon actually ended up with back into the ViciCertificate
+    # table, skipping expired certs, so the DB reflects reality even if charon's
+    # memory momentarily held stale/duplicate certs (e.g. from the swanctl
+    # --load-creds fallback above). Without this, the mirror table only gets
+    # refreshed when someone opens the "vici" tab in the web UI, which can drift
+    # from what's actually loaded for a long time.
+    try:
+        ViciCertificateManager.reload_certs()
+    except Exception as e:
+        # Best-effort only -- must never fail startup (this runs as
+        # ExecStartPost, so a nonzero exit here would fail the whole service).
+        print(f"Warning: could not sync vici certificates to DB: {e}")
 
 
 if __name__ == "__main__":

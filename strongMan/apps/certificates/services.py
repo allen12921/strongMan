@@ -126,17 +126,26 @@ class ViciCertificateManager(object):
     @classmethod
     def reload_certs(cls):
         '''
-        Deletes all ViciCertificates, reads the vici interface and save all Certificates there
+        Deletes all ViciCertificates, reads the vici interface and saves all
+        non-expired certificates found there. Expired ones are skipped so they
+        don't sit in the mirror table and get pushed back into charon by
+        configloader.py's load_certificates() on a later restart.
         :return None
         '''
-        ViciCertificate.objects.all().delete()
         wrapper = ViciWrapper()
+        # Fetch before deleting: if this raises (e.g. vici unreachable), the
+        # existing mirror is left untouched instead of ending up empty.
         vici_certs = wrapper.get_certificates()
+        ViciCertificate.objects.all().delete()
         for dic in vici_certs:
             try:
                 cls._add_x509(dic)
             except CertificateManagerException:
-                pass
+                pass  # expected: duplicate of a UserCertificate, or expired
+            except Exception as e:
+                # Unexpected (e.g. unsupported algorithm, DB error) -- skip this
+                # cert but surface it instead of hiding it like the expected case.
+                print(f"Warning: skipping vici certificate during reload: {e}")
 
     @classmethod
     def _add_x509(cls, vici_dict):
@@ -144,7 +153,15 @@ class ViciCertificateManager(object):
         if cls._usercert_already_exists(cert):
             cert.delete()
             raise CertificateManagerException("Vicicertificate already exists as a UserCertificate.")
+        if cls._is_expired(cert):
+            cert.delete()
+            raise CertificateManagerException("Vicicertificate is expired.")
         return cert
+
+    @classmethod
+    def _is_expired(cls, cert):
+        from django.utils import timezone
+        return cert.valid_not_after < timezone.now()
 
     @classmethod
     def _usercert_already_exists(cls, vicicert):

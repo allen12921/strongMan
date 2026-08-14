@@ -1,4 +1,7 @@
 from django.test import TestCase
+from django.utils import timezone
+from unittest import mock
+import datetime
 import pickle
 import os
 
@@ -90,7 +93,12 @@ class TestViciCertificateManager(TestCase):
     def setUp(self):
         self.manager = ViciCertificateManager
 
-    def test_add_vici_user_already_exists(self):
+    # ViciDict.cert_with_private and ViciDict.cert are both fixed, long-expired
+    # fixtures (not_after 2018-11-19 and 2021-02-23). Freeze "now" to within
+    # their shared validity window so the expiry check in _add_x509 doesn't
+    # interfere with what this test actually exercises (duplicate detection).
+    @mock.patch.object(timezone, "now", return_value=datetime.datetime(2017, 1, 1, tzinfo=datetime.timezone.utc))
+    def test_add_vici_user_already_exists(self, mock_now):
         UserCertificateManager._add_x509(TestCertificates.X509_rsa_ca.read_x509())
         self.manager._add_x509(ViciDict.cert_with_private.deserialize())
         with self.assertRaises(CertificateManagerException):
